@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Claude Hook for Universal Context Keeper — dynamic rule injection for Claude Code",
   "bin": {
-    "chuck": "./bin/chuck.js"
+    "chuck": "bin/chuck.js"
   },
   "scripts": {
     "build": "node node_modules/typescript/bin/tsc",
