@@ -137,6 +137,30 @@ Run `chuck audit` to find bloated or unused rules.
 | Rule packs | None | Built-in + npm ecosystem |
 | Trigger conditions | Keywords only | Keywords + file types + git branch |
 
+## WSL (Windows Subsystem for Linux)
+
+Chuck detects WSL automatically and handles path normalization. A few things to know:
+
+**Run `chuck install-hook` from WSL, not PowerShell.**
+Claude Code running in WSL reads settings from `~/.claude/settings.json` (your WSL home, e.g. `/home/yourname`), not from the Windows home. Running the install from WSL ensures the hook path is written in `/mnt/c/...` format, which is what WSL bash can actually execute.
+
+**If Claude Code becomes unusable after installing the hook:**
+1. At the Claude Code startup prompt, choose **"Continue without these settings"** — this bypasses the hook for that session so you can talk to Claude and fix things.
+2. Or open `~/.claude/settings.json` in any editor and delete the `"hooks"` block, then restart.
+
+**Verify your hook path looks like this (not Windows backslashes):**
+```json
+"command": "python3 /mnt/c/Users/yourname/chuck/src/hook/chuck-hook.py"
+```
+If you see `C:\Users\...` backslash paths in the command, re-run `chuck install-hook` from WSL.
+
+**Make sure python3 is installed in WSL:**
+```bash
+python3 --version   # should print Python 3.x
+# If not:
+sudo apt install python3
+```
+
 ## License
 
 MIT

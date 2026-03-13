@@ -6,9 +6,9 @@
     "chuck": "./bin/chuck.js"
   },
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "lint": "tsc --noEmit"
+    "build": "node node_modules/typescript/bin/tsc",
+    "dev": "node node_modules/typescript/bin/tsc --watch",
+    "lint": "node node_modules/typescript/bin/tsc --noEmit"
   },
   "keywords": [
     "claude",
