@@ -8,13 +8,14 @@ import { suggestCommand } from './suggest';
 import { syncCommand } from './sync';
 import { installHookCommand } from './install-hook';
 import { decideCommand } from './decide';
+import { compactCommand } from './compact';
 
 const program = new Command();
 
 program
   .name('chuck')
   .description('Claude Hook for Universal Context Keeper — smarter Claude Code context')
-  .version('0.3.0');
+  .version('0.3.1');
 
 program
   .command('init')
@@ -65,5 +66,13 @@ program
 
 // Decision Ledger — chuck decide [text], chuck decide:list, etc.
 decideCommand(program);
+
+program
+  .command('compact')
+  .description('Generate a session handoff brief for /compact or new session start')
+  .option('-o, --output <file>', 'Write brief to a file instead of stdout')
+  .option('-s, --sessions <n>', 'Number of recent sessions to analyze (default: 5)', '5')
+  .option('--plain', 'Plain output — no decorative borders')
+  .action(compactCommand);
 
 program.parse();
