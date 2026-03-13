@@ -9,13 +9,14 @@ import { syncCommand } from './sync';
 import { installHookCommand } from './install-hook';
 import { decideCommand } from './decide';
 import { compactCommand } from './compact';
+import { installMonitorCommand } from './install-monitor';
 
 const program = new Command();
 
 program
   .name('chuck')
   .description('Claude Hook for Universal Context Keeper — smarter Claude Code context')
-  .version('0.3.1');
+  .version('0.4.0');
 
 program
   .command('init')
@@ -66,6 +67,12 @@ program
 
 // Decision Ledger — chuck decide [text], chuck decide:list, etc.
 decideCommand(program);
+
+program
+  .command('install-monitor')
+  .description('Install the Chuck quality monitor (PostToolUse hook) into Claude Code settings')
+  .option('-g, --global', 'Install into global Claude settings (~/.claude/settings.json)')
+  .action(installMonitorCommand);
 
 program
   .command('compact')
