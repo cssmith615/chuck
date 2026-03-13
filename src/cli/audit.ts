@@ -70,8 +70,8 @@ export async function auditCommand(): Promise<void> {
       issues.push(chalk.yellow(`⚠ [NO FILE] ${name}: no rules_file defined`));
     }
 
-    // No keywords on non-always-on domain
-    if (!config.always_on && !config.trigger?.keywords?.length) {
+    // No keywords on non-always-on domain (GLOBAL is always-on by convention)
+    if (name !== 'GLOBAL' && !config.always_on && !config.trigger?.keywords?.length) {
       issues.push(chalk.yellow(`⚠ [NO TRIGGER] ${name}: no keywords defined — domain will never auto-load`));
     }
 
