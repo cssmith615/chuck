@@ -329,6 +329,12 @@ def run() -> None:
         session["domain_hits"] = session.get("domain_hits", {})
         session["domain_hits"][domain_name] = session["domain_hits"].get(domain_name, 0) + 1
 
+        # Track avg relevance score per domain
+        ds = session.setdefault("domain_scores", {})
+        entry = ds.setdefault(domain_name, {"total": 0.0, "count": 0})
+        entry["total"] += score
+        entry["count"] += 1
+
     # ── Context bracket warning ───────────────────────────────────────────────
     bracket_warning = ""
     if context_bracket == "CRITICAL":
@@ -336,8 +342,11 @@ def run() -> None:
     elif context_bracket == "DEPLETED":
         bracket_warning = "\n⚠️ Context filling up — prefer concise responses."
 
-    # ── Nothing matched ───────────────────────────────────────────────────────
+    # ── Nothing matched — store miss prompt for chuck suggest ─────────────────
     if not injected_parts:
+        misses = session.setdefault("miss_prompts", [])
+        misses.append(prompt[:200])
+        session["miss_prompts"] = misses[-50:]  # keep last 50
         save_session(chuck_dir, session)
         sys.exit(0)
 

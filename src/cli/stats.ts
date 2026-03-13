@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { findChuckDir, loadManifest, loadSessionData, estimateTokens, loadRuleFile } from './utils';
+import { findChuckDir, loadManifest, loadSessionData, estimateTokens, loadRuleFile, avgScore } from './utils';
 
 export async function statsCommand(): Promise<void> {
   const chuckDir = findChuckDir();
@@ -25,11 +25,17 @@ export async function statsCommand(): Promise<void> {
     return;
   }
 
-  // Domain hit totals
+  // Domain hit totals + score aggregation
   const domainHits: Record<string, number> = {};
+  const domainScores: Record<string, { total: number; count: number }> = {};
   for (const session of Object.values(sessions)) {
-    for (const [domain, hits] of Object.entries((session as { domain_hits?: Record<string, number> }).domain_hits ?? {})) {
+    for (const [domain, hits] of Object.entries(session.domain_hits ?? {})) {
       domainHits[domain] = (domainHits[domain] ?? 0) + hits;
+    }
+    for (const [domain, scores] of Object.entries(session.domain_scores ?? {})) {
+      if (!domainScores[domain]) domainScores[domain] = { total: 0, count: 0 };
+      domainScores[domain].total += scores.total;
+      domainScores[domain].count += scores.count;
     }
   }
 
@@ -59,13 +65,26 @@ export async function statsCommand(): Promise<void> {
   console.log();
 
   if (Object.keys(domainHits).length > 0) {
-    console.log(chalk.bold('Domain Usage'));
-    const sorted = Object.entries(domainHits).sort((a, b) => b[1] - a[1]);
-    for (const [domain, hits] of sorted) {
-      const pct = Math.round((hits / totalPrompts) * 100);
+    console.log(chalk.bold('Domain Effectiveness'));
+    console.log(chalk.gray('  (hit rate × avg relevance score = effectiveness)\n'));
+
+    // Compute effectiveness = hit_rate * avg_score, sort by it
+    const scored = Object.entries(domainHits).map(([domain, hits]) => {
+      const hitRate = hits / totalPrompts;
+      const avg = avgScore(domainScores[domain]);
+      const effectiveness = avg > 0 ? hitRate * avg : hitRate * 0.5; // no score data = neutral
+      return { domain, hits, hitRate, avg, effectiveness };
+    });
+    scored.sort((a, b) => b.effectiveness - a.effectiveness);
+
+    for (const { domain, hits, hitRate, avg, effectiveness } of scored) {
+      const pct = Math.round(hitRate * 100);
       const bar = '█'.repeat(Math.min(Math.round(pct / 5), 20));
-      const color = pct > 50 ? chalk.green : pct > 20 ? chalk.yellow : chalk.gray;
-      console.log(color(`  ${domain.padEnd(20)} ${bar.padEnd(20)} ${hits} hits (${pct}%)`));
+      const avgStr = avg > 0 ? `  avg score: ${avg.toFixed(2)}` : '  avg score: n/a';
+      const effStr = `  eff: ${(effectiveness * 100).toFixed(0)}%`;
+      const color = effectiveness > 0.15 ? chalk.green : effectiveness > 0.05 ? chalk.yellow : chalk.gray;
+      const warning = effectiveness < 0.03 && hits > 3 ? chalk.red(' ⚠ low — consider revising keywords') : '';
+      console.log(color(`  ${domain.padEnd(20)} ${bar.padEnd(20)} ${hits} hits (${pct}%)${avgStr}${effStr}`) + warning);
     }
     console.log();
   }

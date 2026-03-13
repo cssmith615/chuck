@@ -1,6 +1,6 @@
 {
   "name": "chuck-core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Claude Hook for Universal Context Keeper — dynamic rule injection for Claude Code",
   "bin": {
     "chuck": "bin/chuck.js"

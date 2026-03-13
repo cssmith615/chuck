@@ -4,6 +4,8 @@ import { listCommand } from './list';
 import { addCommand } from './add';
 import { auditCommand } from './audit';
 import { statsCommand } from './stats';
+import { suggestCommand } from './suggest';
+import { syncCommand } from './sync';
 import { installHookCommand } from './install-hook';
 
 const program = new Command();
@@ -11,7 +13,7 @@ const program = new Command();
 program
   .name('chuck')
   .description('Claude Hook for Universal Context Keeper — smarter Claude Code context')
-  .version('0.1.0');
+  .version('0.2.0');
 
 program
   .command('init')
@@ -40,6 +42,19 @@ program
   .command('stats')
   .description('Show token savings and domain usage over time')
   .action(statsCommand);
+
+program
+  .command('suggest')
+  .description('Analyze unmatched prompts and suggest new domains or keywords')
+  .action(suggestCommand);
+
+program
+  .command('sync')
+  .description('Push or pull .chuck/ rules via git for team sharing')
+  .option('--push', 'Commit and push rule changes (default)')
+  .option('--pull', 'Pull latest rules from remote')
+  .option('-m, --message <msg>', 'Custom commit message for push')
+  .action(syncCommand);
 
 program
   .command('install-hook')

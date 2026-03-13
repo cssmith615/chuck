@@ -63,11 +63,18 @@ export function findChuckDir(): string | null {
   return null;
 }
 
-export function loadSessionData(chuckDir: string): Record<string, { domain_hits: Record<string, number> }> {
+export interface SessionData {
+  domain_hits: Record<string, number>;
+  domain_scores: Record<string, { total: number; count: number }>;
+  miss_prompts: string[];
+  prompt_count: number;
+}
+
+export function loadSessionData(chuckDir: string): Record<string, SessionData> {
   const sessionDir = path.join(chuckDir, 'sessions');
   if (!fs.existsSync(sessionDir)) return {};
 
-  const sessions: Record<string, { domain_hits: Record<string, number> }> = {};
+  const sessions: Record<string, SessionData> = {};
   for (const file of fs.readdirSync(sessionDir)) {
     if (!file.endsWith('.json')) continue;
     try {
@@ -76,4 +83,9 @@ export function loadSessionData(chuckDir: string): Record<string, { domain_hits:
     } catch { /* skip corrupt sessions */ }
   }
   return sessions;
+}
+
+export function avgScore(scores: { total: number; count: number } | undefined): number {
+  if (!scores || scores.count === 0) return 0;
+  return scores.total / scores.count;
 }
