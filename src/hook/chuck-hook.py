@@ -101,6 +101,54 @@ def score_domain(prompt_tokens: list[str], prompt_set: set[str], trigger: dict) 
     hit_ratio = hits / len(keywords)
     return min(base_score + (hit_ratio * 0.4), 1.0)
 
+# ── Decision Ledger ──────────────────────────────────────────────────────────
+
+DECISIONS_DIR_NAME = "decisions"
+MAX_DECISION_TOKENS = 100  # hard cap for decisions block per prompt
+
+def load_decisions(chuck_dir: Path) -> list[dict]:
+    """Load all active decisions from .chuck/decisions/*.json"""
+    decisions_dir = chuck_dir / DECISIONS_DIR_NAME
+    if not decisions_dir.exists():
+        return []
+    decisions = []
+    for f in decisions_dir.glob("*.json"):
+        try:
+            d = json.loads(f.read_text())
+            if d.get("status", "active") == "active":
+                decisions.append(d)
+        except Exception:
+            pass
+    return decisions
+
+def score_decision(prompt_tokens: list[str], prompt_set: set[str], decision: dict) -> float:
+    """Score a decision's tags + keywords against the prompt."""
+    tags = [t.lower() for t in decision.get("tags", [])]
+    # Also score against the decision text itself
+    decision_words = tokenize(decision.get("decision", ""))
+    all_keywords = list(set(tags + decision_words))
+    if not all_keywords:
+        return 0.0
+    return score_domain(prompt_tokens, prompt_set, {"keywords": all_keywords, "fuzzy": True})
+
+def format_decision_line(d: dict) -> str:
+    """Format a decision as a dense one-liner for injection."""
+    line = f"✓ {d['decision']}"
+    rejected = d.get("rejected", [])
+    reason = d.get("reason", "")
+    if rejected or reason:
+        parts = []
+        for r in rejected[:3]:
+            parts.append(f"not {r}")
+        if reason:
+            # Take first sentence fragment before semicolons or periods
+            short = re.split(r'[;.]', reason)[0].strip()
+            if len(short) > 45:
+                short = short[:42].rsplit(' ', 1)[0] + '…'
+            parts.append(short)
+        line += f" ({'; '.join(parts)})"
+    return line
+
 # ── Manifest loading ─────────────────────────────────────────────────────────
 
 def find_chuck_dir() -> Path | None:
@@ -249,6 +297,36 @@ def run() -> None:
     tokens_used = 0
     active_domains = []
     skipped_domains = []
+    decision_lines = []
+
+    # ── Decision Ledger — inject matching decisions at priority 0 ─────────────
+    all_decisions = load_decisions(chuck_dir)
+    if all_decisions:
+        scored_decisions = []
+        for d in all_decisions:
+            s = score_decision(prompt_tokens, prompt_set, d)
+            if s > 0.05:
+                scored_decisions.append((d, s))
+
+        scored_decisions.sort(key=lambda x: -x[1])
+        decisions_tokens = 0
+        decision_hits = session.setdefault("decision_hits", {})
+
+        for d, s in scored_decisions:
+            line = format_decision_line(d)
+            lt = estimate_tokens(line)
+            if decisions_tokens + lt > MAX_DECISION_TOKENS:
+                break
+            decision_lines.append(line)
+            decisions_tokens += lt
+            # Track hit
+            decision_hits[d["id"]] = decision_hits.get(d["id"], 0) + 1
+
+        if decision_lines:
+            block = "\n".join(decision_lines)
+            injected_parts.append(("DECISIONS", block, decisions_tokens))
+            tokens_used += decisions_tokens
+            active_domains.append(f"DECISIONS ({decisions_tokens}t, {len(decision_lines)} matched)")
 
     # ── Global domain (always on, no keyword check) ───────────────────────────
     global_domain = domains.get("GLOBAL")

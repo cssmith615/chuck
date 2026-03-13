@@ -7,13 +7,14 @@ import { statsCommand } from './stats';
 import { suggestCommand } from './suggest';
 import { syncCommand } from './sync';
 import { installHookCommand } from './install-hook';
+import { decideCommand } from './decide';
 
 const program = new Command();
 
 program
   .name('chuck')
   .description('Claude Hook for Universal Context Keeper — smarter Claude Code context')
-  .version('0.2.0');
+  .version('0.3.0');
 
 program
   .command('init')
@@ -61,5 +62,8 @@ program
   .description('Install the Chuck hook into Claude Code settings')
   .option('-g, --global', 'Install into global Claude settings (~/.claude/settings.json)')
   .action(installHookCommand);
+
+// Decision Ledger — chuck decide [text], chuck decide:list, etc.
+decideCommand(program);
 
 program.parse();

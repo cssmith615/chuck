@@ -63,6 +63,60 @@ export function findChuckDir(): string | null {
   return null;
 }
 
+export interface Decision {
+  id: string;
+  decision: string;
+  rejected: string[];
+  reason: string;
+  constraints: string[];
+  tags: string[];
+  project?: string;
+  date: string;
+  status: 'active' | 'superseded';
+  superseded_by?: string;
+}
+
+export function getDecisionsDir(chuckDir: string): string {
+  return path.join(chuckDir, 'decisions');
+}
+
+export function loadDecisions(chuckDir: string): Decision[] {
+  const dir = getDecisionsDir(chuckDir);
+  if (!fs.existsSync(dir)) return [];
+  const decisions: Decision[] = [];
+  for (const file of fs.readdirSync(dir)) {
+    if (!file.endsWith('.json')) continue;
+    try {
+      decisions.push(JSON.parse(fs.readFileSync(path.join(dir, file), 'utf-8')));
+    } catch { /* skip corrupt */ }
+  }
+  return decisions;
+}
+
+export function saveDecision(chuckDir: string, decision: Decision): void {
+  const dir = getDecisionsDir(chuckDir);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${decision.id}.json`), JSON.stringify(decision, null, 2));
+}
+
+export function deleteDecision(chuckDir: string, id: string): boolean {
+  const file = path.join(getDecisionsDir(chuckDir), `${id}.json`);
+  if (!fs.existsSync(file)) return false;
+  fs.unlinkSync(file);
+  return true;
+}
+
+export function generateDecisionId(decision: string): string {
+  const slug = decision
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 5)
+    .join('_');
+  return `dec_${slug}`;
+}
+
 export interface SessionData {
   domain_hits: Record<string, number>;
   domain_scores: Record<string, { total: number; count: number }>;
