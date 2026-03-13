@@ -1,0 +1,21 @@
+{
+  "domains": {
+    "GLOBAL": {
+      "state": "active",
+      "rules_file": "domains/global.md",
+      "description": "Always-on global rules (keep under 200 tokens)"
+    },
+    "git": {
+      "trigger": {
+        "keywords": ["commit", "branch", "merge", "pr", "push", "pull", "rebase"],
+        "fuzzy": true
+      },
+      "rules_file": "domains/git.md",
+      "priority": 4,
+      "description": "Git workflow rules"
+    }
+  },
+  "global_exclude": ["ignore rules", "skip chuck", "no context"],
+  "token_budget": 2000,
+  "devmode": false
+}
