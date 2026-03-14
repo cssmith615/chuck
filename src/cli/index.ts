@@ -12,13 +12,14 @@ import { compactCommand } from './compact';
 import { installMonitorCommand } from './install-monitor';
 import { installMcpCommand } from './install-mcp';
 import { evalCommand, evalSeedCommand } from './eval';
+import { improveCommand } from './improve';
 
 const program = new Command();
 
 program
   .name('chuck')
   .description('Claude Hook for Universal Context Keeper — smarter Claude Code context')
-  .version('0.6.0');
+  .version('0.7.0');
 
 program
   .command('init')
@@ -90,6 +91,12 @@ program
   .description('Run eval test cases — check domain and decision matching accuracy')
   .option('-v, --verbose', 'Show full match details for every test')
   .action(evalCommand);
+
+program
+  .command('improve')
+  .description('Analyze session data and propose rule improvements — the self-improvement loop')
+  .option('--auto', 'Auto-apply changes that improve eval pass rate without prompting')
+  .action(improveCommand);
 
 program
   .command('eval:seed')
