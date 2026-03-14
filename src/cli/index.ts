@@ -16,13 +16,14 @@ const program = new Command();
 program
   .name('chuck')
   .description('Claude Hook for Universal Context Keeper — smarter Claude Code context')
-  .version('0.4.0');
+  .version('0.5.0');
 
 program
   .command('init')
   .description('Scan project and generate starter rules')
   .option('-g, --global', 'Initialize global (~/.chuck) config instead of local')
   .option('--dry-run', 'Preview what would be generated without writing')
+  .option('--native', 'Generate CLAUDE.md hierarchy instead of .chuck/domains/ (zero-cost path-scoped rules)')
   .action(initCommand);
 
 program
