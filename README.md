@@ -4,18 +4,47 @@
 
 Claude Code reads your `CLAUDE.md` on every single prompt — whether it's relevant or not. For large projects that means hundreds of tokens wasted on rules Claude doesn't need right now. And when context fills, Claude forgets the decisions you made weeks ago and re-suggests exactly what you already rejected.
 
-Chuck fixes both problems. It watches what you type, injects only the rules that matter, remembers your architectural decisions, and catches contradictions before they land in your code.
+Chuck fixes both problems with a four-layer architecture that eliminates wasted tokens at every level.
 
 ---
 
 ## What Chuck does
 
-- **Injects only relevant rules** — React rules when building components, Git rules when committing, nothing for unrelated prompts
+- **Zero-cost path-scoped rules** — `chuck init --native` generates a `CLAUDE.md` hierarchy. Claude Code loads them for free based on which directory you're working in
+- **Decisions-only hook** — the injection hook drops from 800–1200t/prompt to ~20t by delivering decisions only
+- **On-demand pull via MCP** — Claude asks for rule packs when it needs them instead of receiving everything upfront
 - **Remembers your decisions** — "Use Zustand, not Redux" stays in context across every session
 - **Catches contradictions** — warns immediately if Claude starts writing code that violates a logged decision
 - **Generates session handoffs** — `chuck compact` distills your work into a brief for new sessions or `/compact`
 - **Learns over time** — tracks which rules fire and surfaces dead weight
 - **Scales back automatically** — tighter budget as context fills
+
+---
+
+## The Architecture
+
+Chuck works in four layers. Use as many as you need:
+
+```
+Layer 1: Native CLAUDE.md hierarchy   chuck init --native    0t (path-scoped by Claude Code)
+Layer 2: Decisions-only hook          injection_mode flag    ~20t avg (was 800–1200t)
+Layer 3: Chuck MCP server (pull)      chuck install-mcp      0t until Claude asks
+Layer 4: Quality Monitor              chuck install-monitor  0t when clean
+```
+
+**Recommended setup (maximum token efficiency):**
+```bash
+chuck init --native        # generate CLAUDE.md hierarchy
+chuck install-hook         # lean decisions hook (~20t/prompt)
+chuck install-mcp          # on-demand rule pull via MCP
+chuck install-monitor      # real-time contradiction detection
+```
+
+**Classic setup (push model, no CLAUDE.md changes):**
+```bash
+chuck init                 # generate .chuck/domains/ rule files
+chuck install-hook         # TF-IDF smart domain injection
+```
 
 ---
 
@@ -31,58 +60,121 @@ Requires Node 18+ and Python 3.
 
 ## Quick Start
 
+### Native mode (recommended)
 ```bash
-# 1. Initialize in your project (auto-detects your stack)
+# 1. Generate CLAUDE.md hierarchy — rules at zero token cost
+chuck init --native
+
+# 2. Install the lean decisions hook (~20t/prompt)
+chuck install-hook
+
+# 3. Install the MCP server — on-demand rule pull
+chuck install-mcp
+
+# 4. Install the quality monitor
+chuck install-monitor
+
+# 5. Log your first architectural decision
+chuck decide "Use Zustand for state management" --tags state,react
+```
+
+### Classic mode
+```bash
+# 1. Initialize with smart domain matching
 chuck init
 
 # 2. Install the context injection hook
 chuck install-hook
 
-# 3. (Optional) Install the quality monitor hook
+# 3. (Optional) Install the quality monitor
 chuck install-monitor
 
 # 4. See what was set up
 chuck list
 ```
 
-Restart Claude Code. Chuck runs silently in the background on every prompt.
+Restart Claude Code after installing hooks or the MCP server.
 
 ---
 
 ## Commands
 
-### Rules & Setup
+### Setup
 ```bash
-chuck init              # Scan project, auto-generate starter rules from your stack
-chuck list              # Show active rule sets and token costs
-chuck add <pack>        # Install a built-in rule pack
-chuck audit             # Find dead, bloated, or conflicting rules
-chuck stats             # See which rules are firing and how effectively
-chuck suggest           # Get suggestions for new rules based on your actual prompts
-chuck sync              # Push/pull rules via git for team sharing
-chuck install-hook      # Install context injection (UserPromptSubmit hook)
-chuck install-monitor   # Install quality monitor (PostToolUse hook)
+chuck init                  # Scan project, auto-generate .chuck/domains/ rule files
+chuck init --native         # Generate CLAUDE.md hierarchy instead (zero token cost)
+chuck init --dry-run        # Preview what would be generated without writing
+chuck install-hook          # Install context injection (UserPromptSubmit hook)
+chuck install-monitor       # Install quality monitor (PostToolUse hook)
+chuck install-mcp           # Register Chuck MCP server in Claude Code settings
+```
+
+### Rules
+```bash
+chuck list                  # Show active rule sets and token costs
+chuck add <pack>            # Install a built-in rule pack
+chuck audit                 # Find dead, bloated, or conflicting rules
+chuck stats                 # See which rules are firing and how effectively
+chuck suggest               # Get suggestions for new rules based on your actual prompts
+chuck sync                  # Push/pull rules via git for team sharing
 ```
 
 ### Decision Ledger
 ```bash
 chuck decide "Use Zustand for state management" --tags state,react
-                        # Log a decision — prompts for rejected alternatives and reason
-chuck decide            # List all active decisions
-chuck decide:list --tag state        # Filter by tag
-chuck decide:list --all              # Include superseded decisions
-chuck decide:show dec_zustand        # Full detail on one decision
-chuck decide:supersede dec_zustand   # Mark as replaced (keeps history)
-chuck decide:remove dec_zustand      # Hard delete
-chuck decide:audit      # Find decisions that have never fired (stale candidates)
+                            # Log a decision — prompts for rejected alternatives and reason
+chuck decide                # List all active decisions
+chuck decide:list --tag state           # Filter by tag
+chuck decide:list --all                 # Include superseded decisions
+chuck decide:show dec_zustand           # Full detail on one decision
+chuck decide:supersede dec_zustand      # Mark as replaced (keeps history)
+chuck decide:remove dec_zustand         # Hard delete
+chuck decide:audit          # Find decisions that have never fired (stale candidates)
 ```
 
 ### Session Management
 ```bash
-chuck compact           # Generate a session handoff brief (paste to start new session)
-chuck compact -o brief.md            # Write to file
-chuck compact -s 10     # Analyze last 10 sessions (default: 5)
+chuck compact               # Generate a session handoff brief (paste to start new session)
+chuck compact -o brief.md   # Write to file
+chuck compact -s 10         # Analyze last 10 sessions (default: 5)
 ```
+
+---
+
+## Native Mode: CLAUDE.md Hierarchy
+
+`chuck init --native` maps your detected stack to a `CLAUDE.md` hierarchy that Claude Code loads at zero token cost, path-scoped automatically:
+
+| File | Contents | Loaded when |
+|---|---|---|
+| `CLAUDE.md` | Global + Git rules | Always |
+| `src/CLAUDE.md` | React / RN / TypeScript / Zustand | Working in `src/` |
+| `supabase/CLAUDE.md` | Supabase rules | Working in `supabase/` |
+
+The manifest is created with `injection_mode: "decisions_only"` automatically — the hook injects decisions only (~20t) while domain rules live in the hierarchy for free.
+
+Existing `CLAUDE.md` files are appended, not overwritten.
+
+---
+
+## MCP Server: Pull Model
+
+The Chuck MCP server lets Claude ask for context on demand rather than receiving it every prompt.
+
+```bash
+chuck install-mcp
+```
+
+Four tools available in Claude Code:
+
+| Tool | What it does |
+|---|---|
+| `chuck:list_domains` | Discover available rule packs + token costs |
+| `chuck:get_rule_pack(domain)` | Pull a full domain's rules when needed |
+| `chuck:get_decisions(topic)` | Semantic search over Decision Ledger by topic |
+| `chuck:surface_decisions()` | Top decisions by completeness — call at session start |
+
+With the MCP server installed, Claude can say "let me check the Supabase rules before I write this migration" and pull exactly what it needs, exactly when it needs it.
 
 ---
 
@@ -122,7 +214,7 @@ Decisions live in `.chuck/decisions/` as JSON — versioned with your project, s
   "reason": "Redux boilerplate too heavy for mobile; Context API caused re-render issues",
   "constraints": ["React Native", "mobile performance"],
   "tags": ["state", "architecture", "react"],
-  "date": "2026-03-13",
+  "date": "2026-03-14",
   "status": "active"
 }
 ```
@@ -192,11 +284,11 @@ Late in a long session — when every token counts — Chuck is at its most cons
 
 ## Project structure
 
-After `chuck init`:
+After `chuck init` (classic):
 
 ```
 .chuck/
-├── manifest.json         # Rule config and token budget
+├── manifest.json         # Rule config, token budget, injection_mode
 ├── domains/
 │   ├── global.md         # Always-on rules (keep under 200 tokens)
 │   ├── react.md          # Fires on React-related prompts
@@ -208,6 +300,18 @@ After `chuck init`:
 ├── commands/
 │   └── review.md         # Load manually with *review in your prompt
 └── sessions/             # Local usage data (gitignored)
+```
+
+After `chuck init --native`:
+
+```
+CLAUDE.md                 # Global + Git rules (always loaded)
+src/CLAUDE.md             # React / TypeScript / Zustand (path-scoped)
+supabase/CLAUDE.md        # Supabase rules (path-scoped)
+.chuck/
+├── manifest.json         # injection_mode: "decisions_only"
+├── decisions/            # Decision Ledger
+└── sessions/             # Local usage data
 ```
 
 ---
@@ -242,9 +346,17 @@ chuck add claude-api    # Anthropic Claude API usage
     }
   },
   "token_budget": 2000,
+  "injection_mode": "smart",
   "devmode": false
 }
 ```
+
+### `injection_mode`
+
+| Value | Behavior |
+|---|---|
+| `"smart"` (default) | TF-IDF domain matching — injects relevant domains each prompt |
+| `"decisions_only"` | Skips domain injection — use with `--native` or MCP pull model |
 
 ### Trigger options
 
@@ -278,7 +390,7 @@ Session data (`.chuck/sessions/`) is automatically excluded from git — only ru
 
 Chuck detects WSL automatically and handles path normalization.
 
-**Run `chuck install-hook` and `chuck install-monitor` from WSL, not PowerShell.**
+**Run `chuck install-hook`, `chuck install-monitor`, and `chuck install-mcp` from WSL, not PowerShell.**
 Claude Code running in WSL reads settings from `~/.claude/settings.json` (your WSL home). Running installs from WSL ensures paths are written in `/mnt/c/...` format.
 
 **If Claude Code becomes unusable after installing:**
