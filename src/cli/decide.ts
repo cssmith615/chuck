@@ -160,13 +160,11 @@ function auditDecisions(): void {
   const decisions = loadDecisions(chuckDir).filter(d => d.status === 'active');
   if (decisions.length === 0) { console.log(chalk.dim('No active decisions.')); return; }
 
-  // Aggregate decision hits from all sessions
   const allSessions = loadSessionData(chuckDir);
   const hitCounts: Record<string, number> = {};
   for (const session of Object.values(allSessions)) {
-    const dh = (session as any).decision_hits ?? {};
-    for (const [id, count] of Object.entries(dh)) {
-      hitCounts[id] = (hitCounts[id] ?? 0) + (count as number);
+    for (const [id, count] of Object.entries(session.decision_hits ?? {})) {
+      hitCounts[id] = (hitCounts[id] ?? 0) + count;
     }
   }
 
@@ -191,6 +189,148 @@ function auditDecisions(): void {
     console.log(chalk.green('\nAll decisions are firing. No dead weight detected.'));
   } else {
     console.log(chalk.yellow(`\n${flagged} decision(s) never fired. Consider: removing stale ones or adding more tags.`));
+  }
+}
+
+function healthDecisions(): void {
+  const chuckDir = findChuckDir();
+  if (!chuckDir) { console.error(chalk.red('No .chuck directory found.')); process.exit(1); }
+
+  const decisions = loadDecisions(chuckDir).filter(d => d.status === 'active');
+  if (decisions.length === 0) { console.log(chalk.dim('No active decisions.')); return; }
+
+  const allSessions = loadSessionData(chuckDir);
+  const fires: Record<string, number> = {};
+  const violations: Record<string, number> = {};
+
+  for (const session of Object.values(allSessions)) {
+    for (const [id, count] of Object.entries(session.decision_hits ?? {})) {
+      fires[id] = (fires[id] ?? 0) + count;
+    }
+    for (const [id, count] of Object.entries(session.contradiction_hits ?? {})) {
+      violations[id] = (violations[id] ?? 0) + count;
+    }
+  }
+
+  const totalFires = Object.values(fires).reduce((a, b) => a + b, 0);
+  const totalViolations = Object.values(violations).reduce((a, b) => a + b, 0);
+  const hasData = Object.keys(allSessions).length > 0;
+
+  console.log(chalk.bold.cyan('\n⚡ Decision Health Report\n'));
+  console.log(
+    chalk.gray(`${decisions.length} active decisions  |  `) +
+    chalk.gray(`${totalFires} total fires  |  `) +
+    (totalViolations > 0 ? chalk.red(`${totalViolations} total violations`) : chalk.green('0 violations')) +
+    '\n'
+  );
+
+  // Build rows
+  interface HealthRow {
+    decision: Decision;
+    fireCount: number;
+    violationCount: number;
+    holdRate: number;
+    flags: string[];
+  }
+
+  const rows: HealthRow[] = decisions.map(d => {
+    const f = fires[d.id] ?? 0;
+    const v = violations[d.id] ?? 0;
+    const total = f + v;
+    const holdRate = total > 0 ? Math.round((f / total) * 100) : 100;
+    const flags: string[] = [];
+
+    if (v > 0 && holdRate < 80) flags.push('weak');
+    else if (v > 0) flags.push('drift');
+    if (f > 3 && d.rejected.length === 0) flags.push('no-rejected');
+    if (f === 0 && hasData && Object.keys(allSessions).length > 2) flags.push('silent');
+
+    return { decision: d, fireCount: f, violationCount: v, holdRate, flags };
+  });
+
+  // Sort: violations desc, then fires desc
+  rows.sort((a, b) => b.violationCount - a.violationCount || b.fireCount - a.fireCount);
+
+  // Table
+  const idWidth = Math.min(Math.max(...rows.map(r => r.decision.id.length), 20), 48);
+  console.log(
+    chalk.dim('  ' + 'ID'.padEnd(idWidth + 2) + 'Fires'.padStart(6) + '  Violations'.padEnd(13) + 'Hold'.padStart(5))
+  );
+  console.log(chalk.dim('  ' + '─'.repeat(idWidth + 28)));
+
+  for (const row of rows) {
+    const { decision: d, fireCount, violationCount, holdRate, flags } = row;
+    const id = d.id.slice(0, idWidth).padEnd(idWidth);
+
+    let statusIcon: string;
+    let rowColor: (s: string) => string;
+    if (flags.includes('weak')) {
+      statusIcon = chalk.red('✗');
+      rowColor = chalk.red;
+    } else if (flags.includes('drift') || flags.includes('no-rejected')) {
+      statusIcon = chalk.yellow('⚠');
+      rowColor = chalk.yellow;
+    } else if (flags.includes('silent')) {
+      statusIcon = chalk.gray('○');
+      rowColor = chalk.gray;
+    } else {
+      statusIcon = chalk.green('✓');
+      rowColor = chalk.green;
+    }
+
+    const holdStr = violationCount > 0 ? `${holdRate}%` : '—';
+    console.log(
+      `  ${statusIcon} ${rowColor(id)}` +
+      chalk.white(String(fireCount).padStart(5)) + '  ' +
+      (violationCount > 0 ? chalk.red(String(violationCount).padEnd(12)) : chalk.gray('0'.padEnd(12))) +
+      chalk.gray(holdStr.padStart(4))
+    );
+  }
+
+  // Flagged detail section
+  const flagged = rows.filter(r => r.flags.length > 0);
+  if (flagged.length === 0) {
+    console.log(chalk.green('\n✅ All decisions are healthy.\n'));
+    return;
+  }
+
+  console.log(chalk.bold('\nFlags:\n'));
+
+  for (const row of flagged) {
+    const { decision: d, fireCount, violationCount, holdRate, flags } = row;
+
+    if (flags.includes('weak')) {
+      console.log(chalk.red(`  ✗ ${d.id}`));
+      console.log(chalk.gray(`    ${violationCount} violations — holding ${holdRate}% — this decision is not sticking`));
+      if (d.rejected.length) {
+        console.log(chalk.gray(`    Current rejected[]: ${d.rejected.join(', ')}`));
+        console.log(chalk.gray('    Rejected[] may be incomplete — the monitor only catches listed terms'));
+      }
+      console.log(chalk.gray(`    Run: chuck decide:show ${d.id}`));
+      console.log(chalk.gray(`    Fix: chuck decide:supersede ${d.id}   (if the decision has changed)`));
+    } else if (flags.includes('drift')) {
+      console.log(chalk.yellow(`  ⚠ ${d.id}`));
+      console.log(chalk.gray(`    ${violationCount} violation${violationCount > 1 ? 's' : ''} detected — holding ${holdRate}%`));
+      if (d.rejected.length) {
+        console.log(chalk.gray(`    Current rejected[]: ${d.rejected.join(', ')}`));
+      }
+      console.log(chalk.gray('    Consider expanding rejected[] to cover more alternatives'));
+      console.log(chalk.gray(`    Run: chuck decide:show ${d.id}`));
+    }
+
+    if (flags.includes('no-rejected')) {
+      const prefix = flags.includes('weak') || flags.includes('drift') ? '    Also: ' : `  ⚠ ${d.id}\n    `;
+      console.log(chalk.yellow(`${prefix}fires ${fireCount}× but rejected[] is empty`));
+      console.log(chalk.gray('    The monitor cannot detect violations without rejected[] entries'));
+      console.log(chalk.gray(`    Run: chuck decide "${d.decision}" --tags ${d.tags.join(',') || 'yourtag'}   to re-log with rejected alternatives`));
+    }
+
+    if (flags.includes('silent') && !flags.includes('weak') && !flags.includes('drift') && !flags.includes('no-rejected')) {
+      console.log(chalk.gray(`  ○ ${d.id} — never fired`));
+      console.log(chalk.gray(`    Tags: ${d.tags.join(', ') || 'none'} — add more tags to improve matching`));
+    }
+
+    console.log();
   }
 }
 
@@ -239,4 +379,9 @@ export function decideCommand(program: any): void {
     .command('decide:audit')
     .description('Find decisions that have never fired (stale candidate)')
     .action(auditDecisions);
+
+  program
+    .command('decide:health')
+    .description('Decision health report — fire counts, violation rates, and hold scores')
+    .action(healthDecisions);
 }
