@@ -16,7 +16,8 @@ Chuck fixes both problems with a four-layer architecture that eliminates wasted 
 - **Remembers your decisions** — "Use Zustand, not Redux" stays in context across every session
 - **Catches contradictions** — warns immediately if Claude starts writing code that violates a logged decision
 - **Generates session handoffs** — `chuck compact` distills your work into a brief for new sessions or `/compact`
-- **Learns over time** — tracks which rules fire and surfaces dead weight
+- **Self-improving** — `chuck improve` reads your session data and proposes rule fixes with before/after eval scores
+- **Decision health tracking** — `chuck decide:health` shows which decisions are holding and which are being violated
 - **Scales back automatically** — tighter budget as context fills
 
 ---
@@ -130,6 +131,16 @@ chuck decide:show dec_zustand           # Full detail on one decision
 chuck decide:supersede dec_zustand      # Mark as replaced (keeps history)
 chuck decide:remove dec_zustand         # Hard delete
 chuck decide:audit          # Find decisions that have never fired (stale candidates)
+chuck decide:health         # Health report — fires, violations, hold rates per decision
+```
+
+### Self-Improvement Loop
+```bash
+chuck eval:seed             # Generate starter test cases from your active rule stack
+chuck eval                  # Run all test cases — check domain and decision matching accuracy
+chuck eval -v               # Verbose — show full match details per test
+chuck improve               # Analyze session data, propose rule fixes, apply with confirm/skip
+chuck improve --auto        # Auto-apply changes that improve eval pass rate
 ```
 
 ### Session Management
@@ -244,6 +255,92 @@ If intentional: ignore this warning.
 ```
 
 **Token cost:** 0 on clean code. ~30–50 tokens only when a contradiction is caught — which prevents the 200–500 token correction loop you'd have otherwise.
+
+---
+
+## Self-Improvement Loop
+
+Chuck gets smarter the more you use it. The hook and monitor collect data every session — `chuck improve` turns that data into concrete rule changes.
+
+### The loop
+
+```
+chuck eval:seed     → seed test cases from your stack
+chuck eval          → baseline: how well do your rules match now?
+                          ↓
+   [use Claude Code — hook fires, monitor watches]
+                          ↓
+chuck stats         → Decision Health: fires, violations, hold rates
+chuck improve       → proposes keyword additions + surfaces violated decisions
+                      confirm y/n/skip per proposal, shows eval delta
+chuck sync --push   → share improved rules with team
+```
+
+### `chuck eval` — test cases for your rules
+
+Define what prompts should match which domains and decisions:
+
+```json
+{
+  "description": "state management question should match zustand + react",
+  "prompt": "how should I manage global state in my React app?",
+  "expected_domains": ["react", "zustand"],
+  "expected_decisions": ["dec_use_zustand_for_state_management"]
+}
+```
+
+```bash
+chuck eval:seed     # auto-generate starter cases from your stack
+chuck eval          # run all cases — exits 0 on full pass (CI-friendly)
+```
+
+### `chuck improve` — close the feedback loop
+
+```bash
+chuck improve
+```
+
+Chuck reads your session data and proposes targeted fixes:
+
+- **Keyword gaps** — finds terms that appear in unmatched prompts and co-occur with your domain keywords, then proposes adding them to the right trigger
+- **Violated decisions** — surfaces decisions that the monitor has flagged and lets you expand `rejected[]` interactively
+- Shows eval pass rate before and after — you only apply changes that help
+
+```
+[1/2] Domain: react — 4 common miss terms
+  Reason: 6 unmatched prompts contain react-related terms
+  Current keywords: react, component, jsx
+  Proposed additions: hook, useState, useEffect, memo
+  Apply? [y/n/skip]
+
+Results: Before: 75%  After: 100%  +25%
+```
+
+Use `chuck improve --auto` to apply all changes that improve pass rate without prompting — the unattended loop.
+
+### `chuck decide:health` — know which decisions are holding
+
+```bash
+chuck decide:health
+```
+
+```
+⚡ Decision Health Report
+
+3 active decisions  |  26 total fires  |  2 total violations
+
+  ID                                           Fires  Violations  Hold
+  ──────────────────────────────────────────────────────────────────────
+  ✗ dec_use_safe_area_context                      4           3   57%
+  ⚠ dec_never_use_uuid_package                     8           2   80%
+  ✓ dec_use_zustand_for_state_management          18           0    —
+
+Flags:
+  ✗ dec_use_safe_area_context — holding 57% — review or supersede
+  ⚠ dec_never_use_uuid_package — expand rejected[] to cover more alternatives
+```
+
+Also catches decisions that fire often but have an empty `rejected[]` — those are invisible to the monitor.
 
 ---
 
