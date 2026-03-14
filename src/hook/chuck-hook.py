@@ -288,6 +288,7 @@ def run() -> None:
     token_budget = manifest.get("token_budget", DEFAULT_TOKEN_BUDGET)
     global_exclude = manifest.get("global_exclude", [])
     domains = manifest.get("domains", {})
+    injection_mode = manifest.get("injection_mode", "smart")
 
     # Global exclude check
     if is_globally_excluded(prompt_set, global_exclude):
@@ -352,66 +353,69 @@ def run() -> None:
                 active_domains.append(f"*{cmd} ({t}t)")
 
     # ── Domain matching ───────────────────────────────────────────────────────
+    # Skip domain injection entirely in decisions_only mode — domains live in
+    # native CLAUDE.md hierarchy (zero cost) or are pulled via MCP on demand.
     context_bracket = get_context_bracket()
 
     # Budget modifier based on context fill
     budget_modifier = {"FRESH": 1.0, "MODERATE": 0.75, "DEPLETED": 0.5, "CRITICAL": 0.25}
     effective_budget = int(token_budget * budget_modifier.get(context_bracket, 1.0))
 
-    scored = []
-    for domain_name, config in domains.items():
-        if domain_name == "GLOBAL":
-            continue
-        if config.get("state", "active") != "active":
-            continue
+    if injection_mode != "decisions_only":
+        scored = []
+        for domain_name, config in domains.items():
+            if domain_name == "GLOBAL":
+                continue
+            if config.get("state", "active") != "active":
+                continue
 
-        # Domain-level exclude check
-        domain_exclude = config.get("exclude_keywords", [])
-        if any(kw.lower() in prompt_set for kw in domain_exclude):
-            skipped_domains.append(domain_name)
-            continue
+            # Domain-level exclude check
+            domain_exclude = config.get("exclude_keywords", [])
+            if any(kw.lower() in prompt_set for kw in domain_exclude):
+                skipped_domains.append(domain_name)
+                continue
 
-        trigger = config.get("trigger", {})
+            trigger = config.get("trigger", {})
 
-        # Always-on domains
-        if config.get("always_on", False):
-            scored.append((domain_name, config, 1.0))
-            continue
+            # Always-on domains
+            if config.get("always_on", False):
+                scored.append((domain_name, config, 1.0))
+                continue
 
-        score = score_domain(prompt_tokens, prompt_set, trigger)
-        if score > 0.05:  # Minimum relevance threshold
-            scored.append((domain_name, config, score))
+            score = score_domain(prompt_tokens, prompt_set, trigger)
+            if score > 0.05:  # Minimum relevance threshold
+                scored.append((domain_name, config, score))
 
-    # Sort by priority then score
-    scored.sort(key=lambda x: (x[1].get("priority", 5), -x[2]))
+        # Sort by priority then score
+        scored.sort(key=lambda x: (x[1].get("priority", 5), -x[2]))
 
-    for domain_name, config, score in scored:
-        rules_file = config.get("rules_file", "")
-        if not rules_file:
-            continue
+        for domain_name, config, score in scored:
+            rules_file = config.get("rules_file", "")
+            if not rules_file:
+                continue
 
-        content = load_rule_file(chuck_dir, rules_file)
-        if not content:
-            continue
+            content = load_rule_file(chuck_dir, rules_file)
+            if not content:
+                continue
 
-        t = estimate_tokens(content)
-        if tokens_used + t > effective_budget:
-            skipped_domains.append(f"{domain_name} (over budget)")
-            continue
+            t = estimate_tokens(content)
+            if tokens_used + t > effective_budget:
+                skipped_domains.append(f"{domain_name} (over budget)")
+                continue
 
-        injected_parts.append((domain_name, content, t))
-        tokens_used += t
-        active_domains.append(f"{domain_name} ({t}t, score:{score:.2f})")
+            injected_parts.append((domain_name, content, t))
+            tokens_used += t
+            active_domains.append(f"{domain_name} ({t}t, score:{score:.2f})")
 
-        # Track domain hits for effectiveness scoring
-        session["domain_hits"] = session.get("domain_hits", {})
-        session["domain_hits"][domain_name] = session["domain_hits"].get(domain_name, 0) + 1
+            # Track domain hits for effectiveness scoring
+            session["domain_hits"] = session.get("domain_hits", {})
+            session["domain_hits"][domain_name] = session["domain_hits"].get(domain_name, 0) + 1
 
-        # Track avg relevance score per domain
-        ds = session.setdefault("domain_scores", {})
-        entry = ds.setdefault(domain_name, {"total": 0.0, "count": 0})
-        entry["total"] += score
-        entry["count"] += 1
+            # Track avg relevance score per domain
+            ds = session.setdefault("domain_scores", {})
+            entry = ds.setdefault(domain_name, {"total": 0.0, "count": 0})
+            entry["total"] += score
+            entry["count"] += 1
 
     # ── Context bracket warning ───────────────────────────────────────────────
     bracket_warning = ""
@@ -435,6 +439,7 @@ def run() -> None:
     if manifest.get("devmode", False):
         debug_info = f"""
 <!-- CHUCK DEBUG
+  Mode: {injection_mode}
   Active: {', '.join(active_domains)}
   Skipped: {', '.join(skipped_domains) or 'none'}
   Tokens injected: {tokens_used}/{effective_budget} (context: {context_bracket})

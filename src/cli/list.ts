@@ -21,11 +21,16 @@ export async function listCommand(options: ListOptions): Promise<void> {
   }
 
   const budget = manifest.token_budget ?? 2000;
+  const mode = manifest.injection_mode ?? 'smart';
   let totalTokens = 0;
 
   console.log(chalk.bold.cyan('\n⚡ Chuck Domains\n'));
   console.log(chalk.gray(`Config: ${chuckDir}`));
-  console.log(chalk.gray(`Token budget: ${budget}\n`));
+  console.log(chalk.gray(`Token budget: ${budget}`));
+  const modeLabel = mode === 'decisions_only'
+    ? chalk.yellow('decisions_only') + chalk.gray(' (domains skipped — use native CLAUDE.md)')
+    : chalk.green('smart') + chalk.gray(' (TF-IDF domain matching)');
+  console.log(chalk.gray(`Injection mode: `) + modeLabel + '\n');
 
   const rows: string[] = [];
 

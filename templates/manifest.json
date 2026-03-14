@@ -17,5 +17,6 @@
   },
   "global_exclude": ["ignore rules", "skip chuck", "no context"],
   "token_budget": 2000,
-  "devmode": false
+  "devmode": false,
+  "injection_mode": "smart"
 }

@@ -28,6 +28,7 @@ export interface Manifest {
   global_exclude?: string[];
   token_budget?: number;
   devmode?: boolean;
+  injection_mode?: 'smart' | 'decisions_only';
 }
 
 export function getChuckDir(global = false): string {
