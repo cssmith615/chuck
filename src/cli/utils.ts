@@ -123,6 +123,8 @@ export interface SessionData {
   domain_scores: Record<string, { total: number; count: number }>;
   miss_prompts: string[];
   prompt_count: number;
+  decision_hits?: Record<string, number>;
+  contradiction_hits?: Record<string, number>;
 }
 
 export function loadSessionData(chuckDir: string): Record<string, SessionData> {

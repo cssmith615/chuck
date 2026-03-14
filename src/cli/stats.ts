@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { findChuckDir, loadManifest, loadSessionData, estimateTokens, loadRuleFile, avgScore } from './utils';
+import { findChuckDir, loadManifest, loadSessionData, loadDecisions, estimateTokens, loadRuleFile, avgScore } from './utils';
 
 export async function statsCommand(): Promise<void> {
   const chuckDir = findChuckDir();
@@ -28,6 +28,8 @@ export async function statsCommand(): Promise<void> {
   // Domain hit totals + score aggregation
   const domainHits: Record<string, number> = {};
   const domainScores: Record<string, { total: number; count: number }> = {};
+  const decisionHits: Record<string, number> = {};
+  const contradictionHits: Record<string, number> = {};
   for (const session of Object.values(sessions)) {
     for (const [domain, hits] of Object.entries(session.domain_hits ?? {})) {
       domainHits[domain] = (domainHits[domain] ?? 0) + hits;
@@ -36,6 +38,12 @@ export async function statsCommand(): Promise<void> {
       if (!domainScores[domain]) domainScores[domain] = { total: 0, count: 0 };
       domainScores[domain].total += scores.total;
       domainScores[domain].count += scores.count;
+    }
+    for (const [id, hits] of Object.entries(session.decision_hits ?? {})) {
+      decisionHits[id] = (decisionHits[id] ?? 0) + hits;
+    }
+    for (const [id, hits] of Object.entries(session.contradiction_hits ?? {})) {
+      contradictionHits[id] = (contradictionHits[id] ?? 0) + hits;
     }
   }
 
@@ -85,6 +93,42 @@ export async function statsCommand(): Promise<void> {
       const color = effectiveness > 0.15 ? chalk.green : effectiveness > 0.05 ? chalk.yellow : chalk.gray;
       const warning = effectiveness < 0.03 && hits > 3 ? chalk.red(' ⚠ low — consider revising keywords') : '';
       console.log(color(`  ${domain.padEnd(20)} ${bar.padEnd(20)} ${hits} hits (${pct}%)${avgStr}${effStr}`) + warning);
+    }
+    console.log();
+  }
+
+  // Decision Health — fire counts + violation counts from monitor
+  const allDecisionIds = new Set([...Object.keys(decisionHits), ...Object.keys(contradictionHits)]);
+  if (allDecisionIds.size > 0) {
+    const decisions = loadDecisions(chuckDir);
+    const decisionMap = new Map(decisions.map(d => [d.id, d.decision]));
+
+    console.log(chalk.bold('Decision Health'));
+    console.log(chalk.gray('  (fires = injected by hook  |  violations = rejected alternative written  |  hold rate = fires/(fires+violations))\n'));
+
+    // Sort by violation count desc, then by fires desc
+    const rows = [...allDecisionIds].map(id => ({
+      id,
+      label: decisionMap.get(id) ?? id,
+      fires: decisionHits[id] ?? 0,
+      violations: contradictionHits[id] ?? 0,
+    }));
+    rows.sort((a, b) => b.violations - a.violations || b.fires - a.fires);
+
+    for (const { id, label, fires, violations } of rows) {
+      const total = fires + violations;
+      const holdRate = total > 0 ? Math.round((fires / total) * 100) : 100;
+      const shortLabel = label.length > 50 ? label.slice(0, 47) + '…' : label;
+      const holdColor = violations === 0 ? chalk.green : holdRate >= 80 ? chalk.yellow : chalk.red;
+      const violationStr = violations > 0
+        ? chalk.red(` ⚠ ${violations} violation${violations > 1 ? 's' : ''}`)
+        : chalk.green(' ✓ clean');
+      console.log(
+        holdColor(`  ${shortLabel.padEnd(52)}`) +
+        chalk.gray(`fires: ${String(fires).padStart(3)}`) +
+        violationStr +
+        chalk.gray(`  hold: ${holdRate}%`)
+      );
     }
     console.log();
   }
