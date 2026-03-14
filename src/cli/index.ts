@@ -10,6 +10,7 @@ import { installHookCommand } from './install-hook';
 import { decideCommand } from './decide';
 import { compactCommand } from './compact';
 import { installMonitorCommand } from './install-monitor';
+import { installMcpCommand } from './install-mcp';
 
 const program = new Command();
 
@@ -82,5 +83,11 @@ program
   .option('-s, --sessions <n>', 'Number of recent sessions to analyze (default: 5)', '5')
   .option('--plain', 'Plain output — no decorative borders')
   .action(compactCommand);
+
+program
+  .command('install-mcp')
+  .description('Register the Chuck MCP server in Claude Code settings (on-demand pull model)')
+  .option('-g, --global', 'Install into global Claude settings (default)', true)
+  .action(installMcpCommand);
 
 program.parse();

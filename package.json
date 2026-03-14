@@ -3,7 +3,8 @@
   "version": "0.5.0",
   "description": "Claude Hook for Universal Context Keeper — dynamic rule injection for Claude Code",
   "bin": {
-    "chuck": "bin/chuck.js"
+    "chuck": "bin/chuck.js",
+    "chuck-mcp": "bin/chuck-mcp.js"
   },
   "scripts": {
     "build": "node node_modules/typescript/bin/tsc",
@@ -22,6 +23,7 @@
   "author": "Chuck Smith",
   "license": "MIT",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "chalk": "^5.3.0",
     "commander": "^12.0.0",
     "glob": "^10.3.10"
