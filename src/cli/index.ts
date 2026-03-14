@@ -11,13 +11,14 @@ import { decideCommand } from './decide';
 import { compactCommand } from './compact';
 import { installMonitorCommand } from './install-monitor';
 import { installMcpCommand } from './install-mcp';
+import { evalCommand, evalSeedCommand } from './eval';
 
 const program = new Command();
 
 program
   .name('chuck')
   .description('Claude Hook for Universal Context Keeper — smarter Claude Code context')
-  .version('0.5.2');
+  .version('0.6.0');
 
 program
   .command('init')
@@ -83,6 +84,17 @@ program
   .option('-s, --sessions <n>', 'Number of recent sessions to analyze (default: 5)', '5')
   .option('--plain', 'Plain output — no decorative borders')
   .action(compactCommand);
+
+program
+  .command('eval')
+  .description('Run eval test cases — check domain and decision matching accuracy')
+  .option('-v, --verbose', 'Show full match details for every test')
+  .action(evalCommand);
+
+program
+  .command('eval:seed')
+  .description('Generate starter eval cases from your active rule stack')
+  .action(evalSeedCommand);
 
 program
   .command('install-mcp')
