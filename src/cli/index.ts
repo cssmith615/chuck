@@ -17,7 +17,7 @@ const program = new Command();
 program
   .name('chuck')
   .description('Claude Hook for Universal Context Keeper — smarter Claude Code context')
-  .version('0.5.0');
+  .version('0.5.1');
 
 program
   .command('init')
