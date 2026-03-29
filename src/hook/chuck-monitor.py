@@ -145,6 +145,97 @@ def format_warning(contradictions: list[dict], tool_name: str, file_path: str) -
 
     return "\n".join(lines)
 
+# ── Praxis RAG: decision auto-embed ──────────────────────────────────────────
+
+def embed_new_decision(file_path: str, chuck_dir: Path) -> None:
+    """
+    If praxis-rag is installed (corpora/ dir exists) and a new decision JSON
+    was written to .chuck/decisions/, re-embed the decisions corpus.
+    Runs async via subprocess so it never blocks Claude Code.
+    """
+    import subprocess
+
+    p = Path(file_path)
+    decisions_dir = chuck_dir / DECISIONS_DIR_NAME
+
+    # Only fire for JSON files inside the decisions directory
+    try:
+        p.relative_to(decisions_dir.resolve())
+    except ValueError:
+        try:
+            p.resolve().relative_to(decisions_dir.resolve())
+        except ValueError:
+            return
+
+    if p.suffix.lower() != ".json":
+        return
+
+    # Only fire if praxis-rag is installed
+    if not (chuck_dir / "corpora").exists():
+        return
+
+    bootstrap = chuck_dir / "bootstrap.px"
+    if not bootstrap.exists():
+        return
+
+    # Fire-and-forget: don't block, don't crash on failure
+    try:
+        subprocess.Popen(
+            ["praxis", "run", str(bootstrap)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        pass  # praxis not on PATH — skip silently
+    except Exception:
+        pass
+
+
+# ── Praxis .px validation ─────────────────────────────────────────────────────
+
+def validate_px_file(file_path: str, content: str) -> str | None:
+    """
+    Run `praxis validate` on a .px file's content via a temp file.
+    Returns an error message string if validation fails, None if clean.
+    """
+    import subprocess
+    import tempfile
+
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.px', delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        result = subprocess.run(
+            ["praxis", "validate", tmp_path],
+            capture_output=True, text=True, timeout=10
+        )
+        Path(tmp_path).unlink(missing_ok=True)
+
+        if result.returncode != 0:
+            err = (result.stderr or result.stdout or "validation failed").strip()
+            return err
+        return None
+    except FileNotFoundError:
+        # praxis not on PATH — skip silently
+        return None
+    except Exception:
+        return None
+
+
+def format_px_warning(file_path: str, error: str) -> str:
+    name = Path(file_path).name if file_path else "file"
+    lines = [
+        "<!-- CHUCK MONITOR WARNING -->",
+        f"⚠️  Praxis validation failed for {name}:\n",
+        f"  {error}",
+        "",
+        "Fix the .px syntax before executing with: praxis run <file>",
+        "Validate manually: praxis validate <file>",
+    ]
+    return "\n".join(lines)
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def run() -> None:
@@ -160,7 +251,23 @@ def run() -> None:
     if tool_name not in MONITORED_TOOLS:
         sys.exit(0)
 
+    tool_input = hook_input.get("tool_input", {})
+    file_path = tool_input.get("file_path", "") or tool_input.get("path", "")
+
+    # ── Praxis .px validation (independent of Chuck decisions) ────────────────
+    if file_path and str(file_path).endswith(".px"):
+        content = extract_content(tool_name, tool_input)
+        if content.strip():
+            px_error = validate_px_file(str(file_path), content)
+            if px_error:
+                print(format_px_warning(str(file_path), px_error))
+                # Don't exit — still run decision checks below
+
     chuck_dir = find_chuck_dir()
+
+    # ── RAG: auto-embed new decisions ─────────────────────────────────────────
+    if chuck_dir and file_path and tool_name == "Write":
+        embed_new_decision(str(file_path), chuck_dir)
     if not chuck_dir:
         sys.exit(0)
 
@@ -168,7 +275,6 @@ def run() -> None:
     if not decisions:
         sys.exit(0)
 
-    tool_input = hook_input.get("tool_input", {})
     content = extract_content(tool_name, tool_input)
     if not content.strip():
         sys.exit(0)
@@ -181,10 +287,9 @@ def run() -> None:
     for c in contradictions:
         record_contradiction(chuck_dir, c["id"])
 
-    file_path = tool_input.get("file_path", "") or tool_input.get("path", "")
-    file_path = Path(file_path).name if file_path else ""
+    file_name = Path(file_path).name if file_path else ""
 
-    warning = format_warning(contradictions, tool_name, file_path)
+    warning = format_warning(contradictions, tool_name, file_name)
     print(warning)
 
 if __name__ == "__main__":
